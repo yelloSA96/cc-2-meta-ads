@@ -17,9 +17,24 @@ Full procedure lives in `.claude/requirements/ad-creation-sop.md` — read it fi
 
 ---
 
+## Input: brief (optional)
+
+This skill can be invoked with a free-text brief as its argument, e.g. `/meta-ads-campaigns <brief text>`. The brief is whatever the user typed after the skill name — anything from a couple of details to a full paragraph covering client, objective, budget, targeting, and creative direction.
+
+At the start of the run:
+
+1. If a brief was provided, read it and extract whatever it already answers against the fields needed in Steps 0–5 below (client, objective, budget/CBO-ABO, targeting, assets/copy/CTA, etc.). Hold these as pre-filled answers.
+2. Still confirm ambiguous or high-stakes items explicitly rather than assuming — in particular the client/ad account match (Step 0) and the objective mapping (Step 2), since getting either wrong means building against the wrong account or an incompatible ODAX objective.
+3. For every field the brief didn't cover, ask the user normally at the relevant step — the brief shortens the flow, it doesn't replace the review checkpoint in Step 6.
+4. If no brief was provided, proceed through Steps 0–5 asking fresh as written.
+
+Never invent a value (a client name, budget figure, targeting detail, or interest ID) to fill a gap the brief left open — ask instead.
+
+---
+
 ## Step 0 — Select the client / ad account
 
-1. `ads_get_ad_accounts` — list accounts, confirm with the user which client this campaign belongs to (by name, not just ID). Skip accounts where `is_ads_mcp_enabled` is false.
+1. `ads_get_ad_accounts` — list accounts, confirm with the user which client this campaign belongs to (by name, not just ID) — even if the brief names a client, match it against this list rather than assuming the ID. Skip accounts where `is_ads_mcp_enabled` is false.
 2. Note the client's kebab-case short code for naming (Step 1 below).
 3. Resolve what the objective will need, before building anything:
    - `ads_get_ad_account_pages` (Page + `leadgen_tos_accepted` flag — required if objective is `leads`) or `ads_get_user_pages` if not scoped to this account yet.
@@ -46,7 +61,7 @@ Rules: lowercase, hyphens only, no underscores/camelCase/spaces. `variant` incre
 
 ## Step 2 — Define the campaign objective
 
-Ask the user which objective this campaign serves, then map to the **ODAX outcome value** `ads_create_campaign` requires — legacy objectives (LINK_CLICKS, REACH, etc.) are rejected.
+Ask the user which objective this campaign serves (or confirm what the brief stated), then map to the **ODAX outcome value** `ads_create_campaign` requires — legacy objectives (LINK_CLICKS, REACH, etc.) are rejected.
 
 | SOP label | `objective` value | Typical use |
 |---|---|---|
@@ -62,7 +77,7 @@ Ask the user which objective this campaign serves, then map to the **ODAX outcom
 
 ## Step 3 — Campaign budget structure + create the campaign
 
-Ask: **CBO or ABO?**
+Ask (or use the brief if it specifies): **CBO or ABO?**
 
 - **CBO (recommended default, and what Meta recommends unless told otherwise)** — set `campaign_daily_budget` or `campaign_lifetime_budget` (cents) on `ads_create_campaign`. Meta shifts spend across ad sets automatically.
 - **ABO** — only if the user explicitly asks for per-ad-set budget control. Leave `campaign_daily_budget`/`campaign_lifetime_budget`/`campaign_bid_strategy` **unset** on the campaign; budget goes on each ad set instead (Step 4). Setting any campaign-level budget field silently switches to CBO, so don't set them if the user asked for ABO.
@@ -82,7 +97,7 @@ Call `ads_create_campaign`:
 
 One ad set per audience segment to test/isolate independently — not one per creative.
 
-For each ad set, ask fresh (no saved presets, per this SOP):
+For each ad set, ask fresh for whatever the brief didn't already specify (no saved presets, per this SOP):
 
 1. **Location** — country/region/state/radius → `targeting.geo_locations`.
 2. **Age/gender** — `age_min`/`age_max` are soft suggestions under Advantage+ Audience (default on) unless the user wants a hard cap, in which case set `targeting_automation.advantage_audience: 0`.
@@ -104,7 +119,7 @@ Repeat once per audience segment.
 
 ## Step 5 — Build ads (creative + copy + CTA)
 
-User supplies fresh assets/copy per ad each time — no creative-library reuse in this SOP.
+User supplies fresh assets/copy per ad each time — no creative-library reuse in this SOP. A brief can specify copy/CTA/destination direction, but the asset files/links themselves still need to come from the user in this step.
 
 1. **Upload asset(s)**: `ads_creative_upload_media` with `upload_source: URL` + `media_type` + public `media_url` (preferred path when the client doesn't support interactive MCP Apps), or `upload_source: LOCAL_FILE` if it does. For images specifically, `ads_creative_upload_local_image` + `ads_finalize_local_ad_image_upload` is the local-file path. Get an `image_hash` (images) or `video_id` (video) back.
 2. **Copy**: primary text (`message`), `headline`, `description` as supplied by the user.
